@@ -140,7 +140,7 @@
   document.getElementById('hiscore').textContent = hiscore;
 
   function resetGame(){
-    player = { x: W/2 - PLAYER.w/2, y: Math.round(H*0.8), cd: 0, inv: 0, angle: 0 };
+    player = { x: W/2 - PLAYER.w/2, y: Math.round(H*0.62), cd: 0, inv: 0, angle: 0 };
     bullets = []; ebullets = []; enemies = []; particles = [];
     score = 0; wave = 1; waveTimer = 3; spawnCd = 0.8; elapsed = 0;
     // starfield (3 parallax layers)
@@ -431,8 +431,18 @@
       drawEnemy(e);
     }
 
-    // player
-    if(state !== 'over' && player){
+    // ---- player ----
+    // 醒目提示框：让飞机永远看得见
+    const p = player;
+    if(p){
+      // 半透明定位框（仅运行态不画，始终画）
+      ctx.save();
+      ctx.strokeStyle = 'rgba(120,200,255,0.6)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x - 6, p.y - 6, p.w + 12, p.h + 12);
+      ctx.restore();
+    }
+    if(state !== 'over' && p){
       drawPlayer();
     }
 
