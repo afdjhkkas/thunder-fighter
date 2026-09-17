@@ -14,9 +14,13 @@
   }
   canvas{
     width:min(100vw, 540px);
-    height:100vh;
+    height:auto;
+    aspect-ratio: 540 / 960;
+    max-height:100vh;
     touch-action:none;
     image-rendering:pixelated;
+    border-left:1px solid rgba(90,140,255,.18);
+    border-right:1px solid rgba(90,140,255,.18);
   }
   #hud{
     position:absolute;top:14px;left:50%;transform:translateX(-50%);
@@ -118,9 +122,9 @@
 
   // ---- Game constants ----
   const PLAYER = {
-    w: 44, h: 48, speed: 280, // px/s
+    w: 52, h: 56, speed: 300, // px/s
     fireCd: 0.16,              // seconds between shots
-    bulletSpeed: 720,
+    bulletSpeed: 760,
     lives: 3,
     invincible: 1.8,          // seconds after hit
   };
@@ -136,7 +140,7 @@
   document.getElementById('hiscore').textContent = hiscore;
 
   function resetGame(){
-    player = { x: W/2 - PLAYER.w/2, y: H - 130, cd: 0, inv: 0, angle: 0 };
+    player = { x: W/2 - PLAYER.w/2, y: Math.round(H*0.8), cd: 0, inv: 0, angle: 0 };
     bullets = []; ebullets = []; enemies = []; particles = [];
     score = 0; wave = 1; waveTimer = 3; spawnCd = 0.8; elapsed = 0;
     // starfield (3 parallax layers)
@@ -449,6 +453,8 @@
     ctx.rotate(p.angle);
     const blink = p.inv>0 && Math.floor(elapsed*10)%2===0;
     ctx.globalAlpha = blink ? .35 : 1;
+    // glow halo so the ship is always visible
+    ctx.shadowColor = '#5ab0ff'; ctx.shadowBlur = 18;
     // wings
     ctx.fillStyle = '#3aa0ff';
     ctx.beginPath();
@@ -460,6 +466,7 @@
     ctx.lineTo(p.w/2*0.3, p.h/2 - 6);
     ctx.lineTo(-p.w/2*0.3, p.h/2 - 6);
     ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
     // body highlight
     ctx.fillStyle = '#9fd0ff';
     ctx.beginPath();
@@ -474,7 +481,7 @@
     // engine trail
     if(state==='running'){
       ctx.fillStyle = 'rgba(120,200,255,0.5)';
-      ctx.beginPath(); ctx.ellipse(p.x+p.w/2, p.y+p.h+6, 8, 14, 0, 0, 6.28); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(p.x+p.w/2, p.y+p.h+8, 9, 16, 0, 0, 6.28); ctx.fill();
     }
   }
 
