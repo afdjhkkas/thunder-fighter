@@ -55,7 +55,7 @@
 
   <div id="hud">
     <div class="hud-box"><div class="hud-lbl">分数</div><div class="hud-val" id="score">0</div></div>
-    <div class="hud-box"><div class="hud-lbl">最高</div><div class="hud-val" id="hiscore">0</div></div>
+    <div class="hud-box"><div class="hud-lbl">最�?/div><div class="hud-val" id="hiscore">0</div></div>
     <div class="hud-box"><div class="hud-lbl">生命</div><div class="hud-val" id="lives"></div></div>
     <div class="hud-box"><div class="hud-lbl">波次</div><div class="hud-val" id="wave">1</div></div>
   </div>
@@ -63,13 +63,13 @@
   <div id="overlay">
     <h1 id="ovTitle">雷霆战机</h1>
     <div class="score-final" id="ovScore" style="display:none">得分 <span id="ovScoreVal">0</span></div>
-    <div class="sub">击落敌机 · 躲避弹幕 · 突破波次<br>难度会越来越高</div>
+    <div class="sub">击落敌机 · 躲避弹幕 · 突破波次<br>难度会越来越�?/div>
     <div class="keys">
       <span class="k">A</span><span class="k">D</span><span class="k">W</span><span class="k">S</span> 或方向键移动
       <span class="k">空格</span> 射击<br>
-      <span class="k">P</span> 暂停 · <span class="k">M</span> 静音 · 也能用鼠标控制
+      <span class="k">P</span> 暂停 · <span class="k">M</span> 静音 · 也能用鼠标控�?
     </div>
-    <button id="startBtn">开 始 游 戏</button>
+    <button id="startBtn">开 �?�?�?/button>
   </div>
 </div>
 
@@ -97,7 +97,7 @@
   // ---- 常量 ----
   const P = { w:56, h:60, speed:300, fireCd:.14, bulletSpeed:820, lives:3, invincible:1.8 };
 
-  // ---- 状态 ----
+  // ---- 状�?----
   let state='idle', player, bullets=[], ebullets=[], enemies=[], particles=[], stars=[];
   let score=0, hiscore, wave=1, waveTimer=20, spawnCd=.6, elapsed=0, keys={}, hitFlash=0, mouseDown=false;
   hiscore = +(localStorage.getItem('tf.hiscore')||0);
@@ -105,7 +105,7 @@
 
   function resetGame(){
     // 飞机停在画面正中（y=H/2），最显眼
-    player = { x:W/2-P.w/2, y:H/2-P.h/2, cd:0, inv:0, angle:0, livesLeft:P.lives };
+    player = { x:W/2-P.w/2, y:H/2-P.h/2, w:P.w, h:P.h, cd:0, inv:0, angle:0, livesLeft:P.lives };
     bullets=[]; ebullets=[]; enemies=[]; particles=[];
     score=0; wave=1; waveTimer=20; spawnCd=.6; elapsed=0;
     stars=[];
@@ -121,7 +121,7 @@
     for(let i=0;i<P.lives;i++){
       const s=document.createElement('span');
       s.className='livedot'+(i<left?'':' lost');
-      s.textContent='●';
+      s.textContent='�?;
       el.appendChild(s);
     }
   }
@@ -160,7 +160,7 @@
   }
   function hit(a,b){ return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y; }
 
-  // ---- 主循环 ----
+  // ---- 主循�?----
   let lastT=0;
   function frame(t){
     requestAnimationFrame(frame);
@@ -247,13 +247,13 @@
     showOverlay('over');
   }
 
-  // ---- 覆盖层 ----
+  // ---- 覆盖�?----
   function showOverlay(kind){
     const ov=document.getElementById('overlay'), title=document.getElementById('ovTitle');
     const scoreEl=document.getElementById('ovScore'), scoreVal=document.getElementById('ovScoreVal');
     ov.classList.add('show');
-    if(kind==='over'){ title.textContent='游戏结束'; scoreEl.style.display='block'; scoreVal.textContent=score; document.getElementById('startBtn').textContent='再 来 一 局'; }
-    else { title.textContent='雷霆战机'; scoreEl.style.display='none'; document.getElementById('startBtn').textContent='开 始 游 戏'; }
+    if(kind==='over'){ title.textContent='游戏结束'; scoreEl.style.display='block'; scoreVal.textContent=score; document.getElementById('startBtn').textContent='�?�?一 局'; }
+    else { title.textContent='雷霆战机'; scoreEl.style.display='none'; document.getElementById('startBtn').textContent='开 �?�?�?; }
   }
   function startGame(){
     initAudio(); resetGame(); updateLives(); setHud();
@@ -274,7 +274,7 @@
     ctx.shadowBlur=0;
     for(const e of enemies) drawEnemy(e);
 
-    // 玩家：画在最上层，带发光（已验证可见）
+    // 玩家：画在最上层，带发光（已验证可见�?
     if(state!=='over'&&player) drawPlayer();
 
     if(hitFlash>0){ ctx.fillStyle='rgba(255,60,90,'+(hitFlash*.35)+')'; ctx.fillRect(0,0,W,H); hitFlash=Math.max(0,hitFlash-.02); }
