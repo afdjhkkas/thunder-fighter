@@ -99,7 +99,7 @@
 
   // ---- 状态 ----
   let state='idle', player, bullets=[], ebullets=[], enemies=[], particles=[], stars=[];
-  let score=0, hiscore, wave=1, waveTimer=20, spawnCd=.6, elapsed=0, keys={}, hitFlash=0;
+  let score=0, hiscore, wave=1, waveTimer=20, spawnCd=.6, elapsed=0, keys={}, hitFlash=0, mouseDown=false;
   hiscore = +(localStorage.getItem('tf.hiscore')||0);
   document.getElementById('hiscore').textContent = hiscore;
 
@@ -189,7 +189,7 @@
     player.angle=tx*.26;
     if(player.cd>0) player.cd-=dt;
     if(player.inv>0) player.inv-=dt;
-    if(keys[' ']) fire();
+    if(keys[' ']||mouseDown) fire();
 
     // 玩家子弹
     for(let i=bullets.length-1;i>=0;i--){ const b=bullets[i]; b.y-=b.v*dt; if(b.y+b.h<0) bullets.splice(i,1); }
@@ -353,7 +353,22 @@
   }
   cvs.addEventListener('mousemove',pointerMove);
   cvs.addEventListener('touchmove',e=>{ e.preventDefault(); pointerMove(e); },{passive:false});
-  cvs.addEventListener('mousedown',()=>{ if(state==='running') fire(); });
+  // 鼠标长按：按住左键持续射击（主版本需求）
+  cvs.addEventListener('mousedown',e=>{
+    if(e.button!==0) return;
+    mouseDown = true;
+    if(state==='running') fire();   // 立刻射一发，避免首次延迟
+  });
+  document.addEventListener('mouseup',e=>{ if(e.button===0) mouseDown=false; });
+  cvs.addEventListener('mouseleave',()=>{ mouseDown=false; });
+  // 触屏长按
+  cvs.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    mouseDown = true;
+    if(state==='running') fire();
+    pointerMove(e);
+  },{passive:false});
+  document.addEventListener('touchend',()=>{ mouseDown=false; });
 
   document.getElementById('startBtn').addEventListener('click',startGame);
   window.addEventListener('resize',()=>{});
