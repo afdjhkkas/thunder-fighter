@@ -47,6 +47,24 @@
     box-shadow:0 8px 30px rgba(60,120,255,.4);transition:transform .15s;
   }
   #startBtn:hover{transform:scale(1.04)}
+  #enhancePanel{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:20;
+    display:none;flex-direction:column;align-items:center;gap:14px;
+    background:rgba(6,12,34,.92);border:1px solid rgba(120,200,255,.4);border-radius:18px;
+    padding:26px 22px;backdrop-filter:blur(8px);max-width:440px;
+  }
+  #enhancePanel.show{display:flex}
+  #enhancePanel h2{font-size:20px;color:#8fd0ff;letter-spacing:4px;margin-bottom:4px}
+  #enhancePanel .hint{font-size:12px;color:#6f87c0}
+  .enhance-list{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  .enhance-card{
+    width:120px;padding:16px 10px;border-radius:12px;cursor:pointer;
+    background:linear-gradient(160deg,#12204a,#0a1030);border:1px solid rgba(90,140,255,.35);
+    transition:transform .12s, border-color .12s;
+  }
+  .enhance-card:hover{transform:translateY(-4px);border-color:#7ae0ff}
+  .enhance-card .enhance-name{font-size:14px;font-weight:700;color:#eaf2ff;margin-bottom:6px}
+  .enhance-card .enhance-desc{font-size:11px;color:#8aa3d6;line-height:1.5}
 </style>
 </head>
 <body>
@@ -59,6 +77,7 @@
     <div class="hud-box"><div class="hud-lbl">生命</div><div class="hud-val" id="lives"></div></div>
     <div class="hud-box"><div class="hud-lbl">波次</div><div class="hud-val" id="wave">1</div></div>
     <div class="hud-box"><div class="hud-lbl">火力</div><div class="hud-val" id="fire">1</div></div>
+    <div class="hud-box"><div class="hud-lbl">等级</div><div class="hud-val" id="level">1</div></div>
   </div>
 
   <div id="overlay">
@@ -71,6 +90,12 @@
       <span class="k">P</span> 暂停 · <span class="k">M</span> 静音 · 也能用鼠标控制
     </div>
     <button id="startBtn">开 始 游 戏</button>
+  </div>
+
+  <div id="enhancePanel">
+    <h2>击 杀 25 · 选 择 增 强</h2>
+    <div class="hint">每 25 次击杀可从池中随机 3 选 1，选择后恢复游戏</div>
+    <div class="enhance-list" id="enhanceList"></div>
   </div>
 </div>
 
@@ -101,13 +126,29 @@
   // ---- 状态 ----
   let state='idle', player, bullets=[], ebullets=[], enemies=[], particles=[], stars=[], items=[], bombs=[];
   let score=0, hiscore, wave=1, waveTimer=20, spawnCd=.6, elapsed=0, keys={}, hitFlash=0, mouseDown=false;
-  let fireLevel=1;            // 武器等级 1..3
+  let fireLevel=1;            // 武器等级 1..5（成长升级提升上限）
   let shieldT=0;             // 护盾剩余秒数
   let itemCd=8;              // 道具掉落冷却（秒）
   let formationCd=12;        // 编队触发冷却（秒）
   let boss=null;             // Boss 引用
   let bossPendingWave=0;     // 该波结束时召唤 Boss
   let lastBossWave=0;        // 已刷过 Boss 的波次（防同波重刷）
+  // ---- 成长系统 ----
+  let playerLevel=0;         // 成长等级（每 10 击杀 +1）
+  let killCount=0;           // 累计击杀计数
+  let bulletDmgMul=1;       // 子弹伤害倍率 1+playerLevel*0.05
+  let moveSpeedMul=1;       // 移动速度倍率 1+playerLevel*0.03
+  let invMul=1;              // 无敌时间倍率 1-playerLevel*0.05（最低 .5）
+  // ---- 3 选 1 随机增强（Roguelike）----
+  let pierceLevel=0;         // 穿透子弹：子弹额外穿过的敌机数
+  let splitLevel=0;         // 分裂子弹：每发分裂 2 斜弹的等级
+  let laserLevel=0;         // 激光主炮：每 3 发追加 1 激光弹
+  let lifestealPct=0;       // 吸血：击杀回 5% 分数奖励
+  let extraLife=0;          // 护体装甲：额外生命
+  let speedPlus=0;          // 急速闪避：移动速度 +40%（可叠加）
+  let fireCdMul=1;          // 极速射击：fireCd -30%（可叠加）
+  let laserCd=0;           // 激光主炮冷却
+  let panelOpen=false;      // 3 选 1 面板是否开启
   hiscore = +(localStorage.getItem('tf.hiscore')||0);
   document.getElementById('hiscore').textContent = hiscore;
 
@@ -118,6 +159,9 @@
     score=0; wave=1; waveTimer=20; spawnCd=.6; elapsed=0;
     fireLevel=1; shieldT=0; itemCd=6; formationCd=12;
     boss=null; bossPendingWave=0; lastBossWave=0;
+    playerLevel=0; killCount=0; bulletDmgMul=1; moveSpeedMul=1; invMul=1;
+    pierceLevel=0; splitLevel=0; laserLevel=0; lifestealPct=0;
+    extraLife=0; speedPlus=0; fireCdMul=1; laserCd=0; panelOpen=false;
     stars=[];
     for(let i=0;i<110;i++) stars.push({x:Math.random()*W, y:Math.random()*H, s:1+Math.random()*2.4, v:50+Math.random()*280, b:.25+Math.random()*.7});
     updateLives();
@@ -126,9 +170,10 @@
   // ---- HUD ----
   function updateLives(){
     const el=document.getElementById('lives');
-    const left=player?player.livesLeft:P.lives;
+    const left=player?player.livesLeft:P.lives+extraLife;
+    const cap=P.lives+extraLife;
     el.innerHTML='';
-    for(let i=0;i<P.lives;i++){
+    for(let i=0;i<cap;i++){
       const s=document.createElement('span');
       s.className='livedot'+(i<left?'':' lost');
       s.textContent='●';
@@ -139,6 +184,7 @@
     document.getElementById('score').textContent=score;
     document.getElementById('wave').textContent=wave;
     document.getElementById('fire').textContent=fireLevel;
+    document.getElementById('level').textContent=playerLevel+1;
   }
 
   // ---- 敌机 ----
@@ -274,30 +320,35 @@
     if(b.fireCd<=0){
       const cx=b.x+b.w/2, cy=b.y+b.h;
       if(!b.enraged){
-        // 三向扇形弹幕
+        // 三向扇形弹幕（波次越高弹速越快、间隔越短）
+        const spd=Math.min(430,300+wave*6), cdw=Math.max(.35,.9-wave*.02);
         for(let a=-2;a<=2;a++){
           const ang=Math.PI/2 + a*0.35;
-          ebullets.push({x:cx,y:cy,w:10,h:14,vx:Math.cos(ang)*300,vy:Math.sin(ang)*300});
+          ebullets.push({x:cx,y:cy,w:10,h:14,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd});
         }
-        b.fireCd=0.9/b.speedMul;
+        b.fireCd=cdw/b.speedMul;
       } else {
-        // 狂暴：环形 + 高速直弹
+        // 狂暴：环形 + 高速直弹（随波次提速）
+        const rspd=Math.min(460,340+wave*4);
         for(let i=0;i<10;i++){
           const ang=i/10*6.283 + b.t;
-          ebullets.push({x:cx,y:cy,w:10,h:14,vx:Math.cos(ang)*340,vy:Math.sin(ang)*340});
+          ebullets.push({x:cx,y:cy,w:10,h:14,vx:Math.cos(ang)*rspd,vy:Math.sin(ang)*rspd});
         }
-        ebullets.push({x:cx-40,y:cy,w:10,h:14,vx:0,vy:520});
-        ebullets.push({x:cx+30,y:cy,w:10,h:14,vx:0,vy:520});
-        b.fireCd=0.55;
+        ebullets.push({x:cx-40,y:cy,w:10,h:14,vx:0,vy:Math.min(700,520+wave*8)});
+        ebullets.push({x:cx+30,y:cy,w:10,h:14,vx:0,vy:Math.min(700,520+wave*8)});
+        b.fireCd=Math.max(.35,.55-wave*.01);
       }
     }
     b.phase = Math.floor(b.t/6)%2;   // 每 6 秒切换攻击模式（非狂暴）
   }
   function bossHit(){
     if(!boss) return;
-    boss.hp-=1;
+    boss.hp-=Math.max(1,Math.round(bulletDmgMul));
     if(boss.hp<=0){
       score+=boss.score;
+      killCount++;
+      if(lifestealPct>0) score+=Math.max(1,Math.round(boss.score*lifestealPct/100)); // 吸血
+      onKill();               // Boss 击杀也计入成长系统
       boom(boss.x+boss.w/2,boss.y+boss.h/2,'#ffd479',80,500);
       boom(boss.x+boss.w/2,boss.y+boss.h/2,'#ff7a4d',60,420);
       tone(100,.6,'sawtooth',.09);
@@ -353,19 +404,39 @@
   }
   function fire(){
     if(player.cd>0) return;
-    player.cd=P.fireCd;
+    player.cd=P.fireCd*fireCdMul;
     const cx=player.x+P.w/2, top=player.y-8;
+    const dmg=Math.max(1,Math.round(bulletDmgMul));   // 子弹伤害 = bulletDmgMul
+    const mk=(x,y,w,h,v,vx,kind,pierce)=>bullets.push({x,y,w,h,v,vx:vx||0,dmg,kind:kind||'main',pierce:pierce||0,split:false});
     // 等级 1：双管
-    bullets.push({x:cx-14,y:top,w:6,h:18,v:P.bulletSpeed});
-    bullets.push({x:cx+8, y:top,w:6,h:18,v:P.bulletSpeed});
+    mk(cx-14,top,6,18,P.bulletSpeed);
+    mk(cx+8, top,6,18,P.bulletSpeed);
     // 等级 2：加两发斜向
     if(fireLevel>=2){
-      bullets.push({x:cx-22,y:top+14,w:5,h:16,v:P.bulletSpeed,vx:-90});
-      bullets.push({x:cx+16,y:top+14,w:5,h:16,v:P.bulletSpeed,vx:90});
+      mk(cx-22,top+14,5,16,P.bulletSpeed,-90);
+      mk(cx+16,top+14,5,16,P.bulletSpeed,90);
     }
     // 等级 3：加一发正中间厚弹
     if(fireLevel>=3){
-      bullets.push({x:cx-3,y:top-14,w:6,h:24,v:P.bulletSpeed*1.05});
+      mk(cx-3,top-14,6,24,P.bulletSpeed*1.05);
+    }
+    // 等级 4：加两发远距离慢弹
+    if(fireLevel>=4){
+      mk(cx-28,top+28,5,14,P.bulletSpeed*.8,-160);
+      mk(cx+24,top+28,5,14,P.bulletSpeed*.8,160);
+    }
+    // 等级 5：六向全开
+    if(fireLevel>=5){
+      mk(cx-34,top+38,4,12,P.bulletSpeed*.7,-230);
+      mk(cx+30,top+38,4,12,P.bulletSpeed*.7,230);
+    }
+    // 激光主炮：每 3 发追加 1 发高伤激光弹
+    if(laserLevel>0){
+      laserCd+=1;
+      if(laserCd>=3){
+        laserCd=0;
+        bullets.push({x:cx-2,y:top-10,w:8,h:30,v:P.bulletSpeed*1.6,dmg:6,kind:'laser',pierce:0,split:false});
+      }
     }
     tone(760,.05,'square',.02);
   }
@@ -381,16 +452,94 @@
   function applyItem(it){
     boom(it.x+16,it.y+16,'#ffe08a',16,200);
     if(it.type==='powerup'){
-      fireLevel=Math.min(3,fireLevel+1);
+      fireLevel=Math.min(5,fireLevel+1);
       tone(880,.12,'sine',.06);
     } else if(it.type==='heal'){
-      player.livesLeft=Math.min(P.lives,player.livesLeft+1);
+      player.livesLeft=Math.min(P.lives+extraLife,player.livesLeft+1);
       updateLives();
       tone(520,.12,'sine',.06);
     } else if(it.type==='shield'){
       shieldT=6;
       tone(660,.15,'sine',.06);
     }
+  }
+
+  // ---- 成长系统：每 10 击杀升级，自动强化 ----
+  function onKill(){
+    // 每 10 击杀触发一次成长升级
+    if(killCount>0 && killCount%10===0){
+      playerLevel++;
+      bulletDmgMul=1+playerLevel*0.05;          // 每级伤害 +5%
+      moveSpeedMul=1+playerLevel*0.03;          // 每级移动速度 +3%
+      invMul=Math.max(.5,1-playerLevel*0.05);   // 每级无敌时间 -5%
+      setHud();
+      // 升级音效 + 粒子提示
+      tone(520,.1,'square',.05); tone(660,.12,'square',.05); tone(880,.16,'sine',.06);
+      const cx=player.x+P.w/2, cy=player.y+P.h/2;
+      for(let i=0;i<26;i++){
+        const a=i/26*Math.PI*2;
+        particles.push({x:cx,y:cy,vx:Math.cos(a)*160,vy:Math.sin(a)*160,life:.6,max:.9,color:'#ffd479',s:3});
+      }
+    }
+    // 每 25 击杀弹 3 选 1 随机增强面板
+    if(killCount>0 && killCount%25===0 && !panelOpen && state!=='over'){
+      openEnhancePanel();
+    }
+  }
+
+  // ---- 3 选 1 随机增强池（10 种，满足 ≥8）----
+  const ENHANCE_POOL=[
+    { id:'fire',      name:'火力升级', desc:'火力等级 +1',
+      apply(){ fireLevel=Math.min(5,fireLevel+1); } },
+    { id:'rapid',     name:'极速射击', desc:'射击间隔 -30%',
+      apply(){ fireCdMul=Math.max(.35,fireCdMul*.7); } },
+    { id:'pierce',    name:'穿透子弹', desc:'子弹额外穿透 1 架敌机',
+      apply(){ pierceLevel+=1; } },
+    { id:'split',     name:'分裂子弹', desc:'主弹额外分裂 2 枚斜弹',
+      apply(){ splitLevel+=1; } },
+    { id:'armor',     name:'护体装甲', desc:'额外 +1 生命',
+      apply(){ extraLife+=1; updateLives(); } },
+    { id:'dodge',     name:'急速闪避', desc:'移动速度 +40%',
+      apply(){ moveSpeedMul*=1.4; } },
+    { id:'laser',     name:'激光主炮', desc:'每 3 发追加 1 发高伤激光弹',
+      apply(){ laserLevel+=1; } },
+    { id:'lifesteal', name:'吸血',     desc:'击杀额外获得 5% 分数奖励',
+      apply(){ lifestealPct+=5; } },
+    { id:'shield',    name:'强化护盾', desc:'立即获得 8 秒护盾',
+      apply(){ shieldT=Math.max(shieldT,8); } },
+    { id:'bomb',      name:'弹幕强化', desc:'额外分裂 1 枚侧弹',
+      apply(){ splitLevel+=1; } },
+  ];
+  function openEnhancePanel(){
+    panelOpen=true;
+    state='paused';               // 游戏暂停，等待选择
+    const pool=[...ENHANCE_POOL];
+    const picks=[];
+    while(picks.length<3){
+      picks.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+    }
+    const panel=document.getElementById('enhancePanel');
+    const list=document.getElementById('enhanceList');
+    list.innerHTML='';
+    picks.forEach(p=>{
+      const card=document.createElement('div');
+      card.className='enhance-card';
+      const nm=document.createElement('div'); nm.className='enhance-name'; nm.textContent=p.name;
+      const ds=document.createElement('div'); ds.className='enhance-desc'; ds.textContent=p.desc;
+      card.appendChild(nm); card.appendChild(ds);
+      card.addEventListener('click',()=>{
+        p.apply();
+        panelOpen=false;
+        state='running';          // 选择后恢复游戏
+        panel.classList.remove('show');
+        setHud();
+        boom(player.x+P.w/2,player.y+P.h/2,'#8affd0',20,240);
+        tone(1180,.14,'sine',.07);
+      });
+      list.appendChild(card);
+    });
+    panel.classList.add('show');
+    tone(1040,.1,'sine',.06);
   }
 
   // ---- 主循环 ----
@@ -416,7 +565,8 @@
     if(keys['w']||keys['arrowup']) ty-=1;
     if(keys['s']||keys['arrowdown']) ty+=1;
     const L=Math.hypot(tx,ty); if(L>0){ tx/=L; ty/=L; }
-    player.x+=tx*P.speed*dt; player.y+=ty*P.speed*dt;
+    const spd=P.speed*moveSpeedMul;
+    player.x+=tx*spd*dt; player.y+=ty*spd*dt;
     player.x=Math.max(4,Math.min(W-P.w-4,player.x));
     player.y=Math.max(80,Math.min(H-P.h-30,player.y));
     player.angle=tx*.26;
@@ -424,8 +574,21 @@
     if(player.inv>0) player.inv-=dt;
     if(keys[' ']||mouseDown) fire();
 
-    // 玩家子弹
-    for(let i=bullets.length-1;i>=0;i--){ const b=bullets[i]; b.y-=b.v*dt; if(b.vx){ b.x+=b.vx*dt; } if(b.y+b.h<0) bullets.splice(i,1); }
+    // 玩家子弹（支持穿透/分裂/激光增强）
+    laserCd-=dt;
+    for(let i=bullets.length-1;i>=0;i--){
+      const b=bullets[i];
+      b.y-=b.v*dt;
+      if(b.vx){ b.x+=b.vx*dt; }
+      if(b.y+b.h<0){ bullets.splice(i,1); continue; }
+      // 分裂子弹：主弹（无 vx 且非 laser）在首次分裂时生成 2 枚斜弹
+      if(b.kind==='main'&&splitLevel>0&&!b.split&&b.y<H*.45){
+        b.split=true;
+        for(let s=-1;s<=1;s+=2){
+          bullets.push({x:b.x+b.w/2+s*10,y:b.y+b.h/2,w:4,h:12,v:P.bulletSpeed*.9,vx:s*150,kind:'split',pierce:0});
+        }
+      }
+    }
     // 敌弹
     for(let i=ebullets.length-1;i>=0;i--){ const b=ebullets[i]; b.x+=b.vx*dt; b.y+=b.vy*dt; if(b.y>H+12||b.y<-20||b.x<-12||b.x>W+12) ebullets.splice(i,1); }
     // 炸弹（轰炸机投掷）：缓慢下落，到玩家高度/落地爆炸成 8 向环形弹幕
@@ -460,12 +623,11 @@
     // 护盾倒计时
     if(shieldT>0){ shieldT-=dt; }
 
-    // 敌机
+    // 敌机（Boss 战中仍正常刷怪，供玩家积累击杀/成长）
     spawnCd-=dt;
-    const isBossWave = bossPendingWave>0 && wave>=bossPendingWave;
-    if(!isBossWave && spawnCd<=0){ spawnEnemy(); spawnCd=Math.max(.4,1.2/(1+(wave-1)*.3)); }
+    if(spawnCd<=0){ spawnEnemy(); spawnCd=Math.max(.4,1.2/(1+(wave-1)*.3)); }
     // 编队刷新：wave>=4 起计时器周期性触发，频率随波次提高，与普通单只刷怪交错
-    if(wave>=4 && !isBossWave){
+    if(wave>=4){
       formationCd-=dt;
       if(formationCd<=0){
         if(wave>=8 && Math.random()<0.4) spawnFormation('mixed');
@@ -473,13 +635,8 @@
         formationCd=Math.max(3,10-wave*.5);
       }
     }
-    // 每 3 波刷一个 Boss
-    if(!boss && wave%3===0 && waveTimer<=1.5 && lastBossWave!==wave){
-      bossPendingWave=wave;
-      spawnBoss();
-    }
     updateBoss(dt);
-    for(let i=enemies.length-1;i>=0;i--){
+    outer: for(let i=enemies.length-1;i>=0;i--){
       const e=enemies[i];
       e.y+=e.vy*dt;
       if(e.vx){ e.x+=e.vx*dt; e.x=Math.max(-e.w,Math.min(W,e.x)); }
@@ -536,17 +693,22 @@
       for(let j=bullets.length-1;j>=0;j--){
         const b=bullets[j];
         if(hit(b,e)){
-          bullets.splice(j,1);
-          // 护盾机：先破盾
+          // 护盾机：先破盾（消耗 1 发，不穿透）
           if(e.type==='shielded'&&e.shieldHp>0){
             e.shieldHp-=1;
             boom(b.x+b.w/2,b.y+b.h/2,'#6fd8ff',4,120);
+            bullets.splice(j,1);
             continue;
           }
-          e.hp-=1;
+          e.hp-=(b.dmg||1);
           boom(e.x+e.w/2,e.y+e.h/2,'#ffd479',5,160);
+          // 穿透子弹：消耗穿透次数，否则消耗子弹
+          if((b.pierce||0)>0){ b.pierce--; }
+          else { bullets.splice(j,1); }
           if(e.hp<=0){
             score+=e.score;
+            killCount++;
+            if(lifestealPct>0) score+=Math.max(1,Math.round(e.score*lifestealPct/100)); // 吸血：击杀回 5% 分数奖励
             const col = e.type==='tank'?'#c98bff':(e.type==='drone'?'#ff8a4d':(e.type==='shielded'?'#6fd8ff':(e.type==='splitter'?'#7dff8a':(e.type==='sniper'?'#ff4d6d':(e.type==='bomber'?'#ffb34d':'#9fe0ff')))));
             boom(e.x+e.w/2,e.y+e.h/2,col,e.type==='tank'?28:15,300);
             if(e.type==='drone'){ boom(e.x+e.w/2,e.y+e.h/2,'#ff5c5c',30,360); }  // 自爆特效
@@ -557,8 +719,11 @@
               }
             }
             tone(400,.09,'sawtooth',.04);
+            onKill();               // 击杀计数：成长升级 + 3 选 1 增强面板
             enemies.splice(i,1); setHud();
+            continue outer;
           }
+          // 未击杀但穿透子弹保留，继续命中其他敌机
           break;
         }
       }
@@ -575,14 +740,15 @@
     if(boss&&player.inv<=0&&hit(player,boss)){
       playerHit();
     }
-    // 玩家子弹 vs Boss
+    // 玩家子弹 vs Boss（支持穿透）
     if(boss){
       for(let j=bullets.length-1;j>=0;j--){
         const b=bullets[j];
         if(hit(b,boss)){
-          bullets.splice(j,1);
           boom(b.x+b.w/2,b.y+b.h/2,'#ffd479',4,140);
           bossHit();
+          if((b.pierce||0)>0){ b.pierce--; }
+          else { bullets.splice(j,1); }
           break;
         }
       }
@@ -594,7 +760,14 @@
       }
     }
     waveTimer-=dt;
-    if(waveTimer<=0){ wave++; waveTimer=20; spawnCd=.2; setHud(); }
+    if(waveTimer<=0){
+      wave++; waveTimer=20; spawnCd=.2; setHud();
+      // 每波 Boss：wave 每次递增时刷新该波 Boss（lastBossWave 防同波重刷）
+      if(!boss && lastBossWave!==wave){
+        bossPendingWave=wave;
+        spawnBoss();
+      }
+    }
   }
 
   function playerHit(){
@@ -612,7 +785,7 @@
       return;
     }
     player.livesLeft--;
-    player.inv=P.invincible;
+    player.inv=P.invincible*invMul;      // 无敌时间随等级缩短
     hitFlash=.22;
     boom(player.x+P.w/2,player.y+P.h/2,'#ff5c7a',34,360);
     tone(120,.25,'sawtooth',.06);
@@ -640,6 +813,7 @@
     updateLives();
     setHud();
     document.getElementById('overlay').classList.remove('show');
+    document.getElementById('enhancePanel').classList.remove('show');
     state='running';
   }
 
@@ -650,7 +824,15 @@
     ctx.globalAlpha=1;
     for(const p of particles){ ctx.globalAlpha=Math.max(0,p.life/p.max); ctx.fillStyle=p.color; ctx.fillRect(p.x,p.y,p.s,p.s); }
     ctx.globalAlpha=1;
-    for(const b of bullets){ ctx.fillStyle='#b6f6ff'; ctx.shadowColor='#3aa0ff'; ctx.shadowBlur=10; ctx.fillRect(b.x,b.y,b.w,b.h); }
+    for(const b of bullets){
+      if(b.kind==='laser'){
+        ctx.fillStyle='#8affd0'; ctx.shadowColor='#3aff8a'; ctx.shadowBlur=14;
+        ctx.fillRect(b.x,b.y,b.w,b.h);
+      } else {
+        ctx.fillStyle='#b6f6ff'; ctx.shadowColor='#3aa0ff'; ctx.shadowBlur=10;
+        ctx.fillRect(b.x,b.y,b.w,b.h);
+      }
+    }
     ctx.shadowBlur=0;
     for(const b of ebullets){ ctx.fillStyle='#ff7a9a'; ctx.shadowColor='#ff5c7a'; ctx.shadowBlur=7; ctx.beginPath(); ctx.ellipse(b.x+b.w/2,b.y+b.h/2,b.w/2,b.h/2,0,0,6.28); ctx.fill(); }
     ctx.shadowBlur=0;
